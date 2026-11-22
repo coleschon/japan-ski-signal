@@ -1,0 +1,159 @@
+import html
+import os
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+
+def _money(value: Any) -> str:
+    return "Unknown" if value is None else f"${float(value):,.0f}"
+
+
+def _number(value: Any) -> str:
+    return "Unknown" if value is None else f"{float(value):g}"
+
+
+def _link(url: str | None, label: str) -> str:
+    if not url:
+        return html.escape(label)
+    return f'<a href="{html.escape(url, quote=True)}">{html.escape(label)}</a>'
+
+
+def render_email(
+    combos: list[dict[str, Any]],
+    alerts: list[dict[str, Any]],
+    *,
+    today: date,
+    enso_anomaly: float | None,
+    enso_class: str,
+    usd_jpy: float | None,
+    digest: bool,
+) -> str:
+    ranked = sorted(combos, key=lambda combo: combo["total_score"], reverse=True)
+    alert_text = []
+    for alert in alerts:
+        if alert["type"] == "storm":
+            alert_text.append(
+                f'{html.escape(alert["resort"])}: {alert["median_cm"]:.1f} cm median over '
+                f'{alert["window_start"]}–{alert["window_end"]} (lead {alert["lead_days"]} days)'
+            )
+        elif alert["type"] == "book_now":
+            alert_text.append(
+                f'{html.escape(alert["resort"])} departing {alert["departure"]}: '
+                f'book-now score {alert["score"]:.3f}'
+            )
+        elif alert["type"] == "weekly_digest":
+            alert_text.append("Weekly digest scheduled for today.")
+    if not alert_text:
+        alert_text.append("No new storm or book-now alerts.")
+    rows = []
+    for combo in ranked:
+        components = combo["components"]
+        details = combo["details"]
+        status = ", ".join(
+            f"{html.escape(name)}: {html.escape(value)}"
+            for name, value in combo.get("source_status", {}).items()
+            if value != "fresh"
+        )
+        score_cells = "".join(
+            f"<td>{components[key]:.3f}</td>"
+            for key in ("snow", "crowds_events", "flights", "lodging", "yen")
+        )
+        rows.append(
+            f"<tr><td>{html.escape(combo['resort'])}</td><td>{combo['departure']}</td>"
+            f"<td><strong>{combo['total_score']:.3f}</strong></td>{score_cells}"
+            f"<td>{'Ineligible: base depth below gate' if not combo['eligible'] else 'Eligible'}"
+            f"{'<br><small>Stale/unavailable: ' + status + '</small>' if status else ''}</td></tr>"
+        )
+    cards = []
+    for combo in ranked:
+        depth = combo.get("depth_cm")
+        details = combo["details"]
+        fare = combo.get("flight") or {}
+        hotels = combo.get("hotels") or []
+        hotels_html = "".join(
+            f"<li>{_link(hotel.get('url'), hotel.get('name', 'Hotel'))} — {_money(hotel.get('price'))}</li>"
+            for hotel in hotels[:3]
+        ) or "<li>No hotel quote available.</li>"
+        event_rows = [
+            event
+            for event in combo.get("events", [])
+            if event["start_date"] <= combo["trip_end"] and event["end_date"] >= combo["trip_start"]
+        ]
+        event_html = "".join(
+            f"<li>{_link(event.get('url'), event['title'])} "
+            f"({event['start_date']}–{event['end_date']})</li>"
+            for event in event_rows
+        ) or "<li>No matching Niseko events overlap this trip.</li>"
+        reasons = [
+            f"{html.escape(alert.get('type', '').replace('_', ' ').title())}"
+            for alert in alerts
+            if alert.get("resort_key") == combo["resort_key"]
+            and (
+                alert.get("departure") in (None, combo["departure"])
+            )
+        ]
+        reason_text = ", ".join(reasons) if reasons else (
+            "Included in the weekly ranked digest." if digest else "Scored for this run."
+        )
+        cards.append(
+            f"<section><h3>{html.escape(combo['resort'])} — departure {combo['departure']}</h3>"
+            f"<p><b>Total {combo['total_score']:.3f}</b> · {reason_text}</p>"
+            f"<p>AMeDAS depth: {_number(depth)} cm; source credit: 出典：気象庁ホームページ</p>"
+            f"<p>Snow: base {details.get('base', 0.5):.3f}, forecast "
+            f"{details.get('forecast', 0.5):.3f}, climatology {details.get('climatology', 0.5):.3f}; "
+            f"crowd {details.get('crowd', 0.5):.3f}, events {details.get('events', 0.5):.3f}</p>"
+            f"<p>Open-Meteo {details.get('horizon_day_count', 0)}-day forecast "
+            f"({('–'.join(details['horizon_dates'])) if details.get('horizon_dates') else 'unavailable'}): "
+            f"{_number(details.get('horizon_median_cm'))} cm median total. "
+            f"Trip snow-window median: {_number(details.get('snow_window_median_cm'))} cm.</p>"
+            f"<p>Best fare: {_link(fare.get('url'), _money(fare.get('price')))}. "
+            f"Top hotels:</p><ul>{hotels_html}</ul>"
+            f"<p>Niseko nightlife events overlapping trip: </p><ul>{event_html}</ul>"
+            f"<p>Sources: {html.escape(', '.join(combo.get('stale_sources', [])) or 'current data')}</p>"
+            "</section>"
+        )
+    enso_note = (
+        "Unavailable"
+        if enso_anomaly is None
+        else f"latest anomaly {enso_anomaly:.2f} ({html.escape(enso_class)})"
+    )
+    heading = "Weekly Japan ski trip signal" if digest else "Japan ski trip alert"
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{{margin:0;background:#f1f5f9;color:#172033;font:16px/1.5 Arial,sans-serif}}
+.wrap{{max-width:900px;margin:auto;padding:16px}}header,section,.table{{background:#fff;border-radius:10px;padding:16px;margin:12px 0}}
+h1,h2,h3{{color:#123b5d}}table{{width:100%;border-collapse:collapse;font-size:14px}}
+th,td{{padding:8px;border-bottom:1px solid #dbe3ea;text-align:left}}th{{background:#e9f1f6}}
+a{{color:#075985}}small{{color:#a33}}
+@media(max-width:620px){{.wrap{{padding:8px}}table{{font-size:12px}}th,td{{padding:5px}}.table{{overflow-x:auto}}}}
+</style></head><body><main class="wrap">
+<header><h1>{heading}</h1><p>Run date: {today.isoformat()} · ENSO: {enso_note} · USD/JPY: {_number(usd_jpy)}</p>
+<h2>Why this fired</h2><ul>{"".join(f"<li>{item}</li>" for item in alert_text)}</ul></header>
+<div class="table"><h2>Ranked combinations</h2><table><thead><tr><th>Resort</th><th>Depart</th>
+<th>Total</th><th>Snow</th><th>Crowd/events</th><th>Flights</th><th>Lodging</th><th>Yen</th><th>Status</th>
+</tr></thead><tbody>{"".join(rows)}</tbody></table></div>
+{"".join(cards)}
+</main></body></html>"""
+
+
+def write_dry_run(html_document: str, today: date) -> Path:
+    output = Path("out")
+    output.mkdir(parents=True, exist_ok=True)
+    path = output / f"japan-ski-signal-{today.isoformat()}.html"
+    path.write_text(html_document, encoding="utf-8")
+    return path
+
+
+def send_email(html_document: str, *, to: str, source: str, subject: str) -> None:
+    import boto3
+
+    boto3.client("ses", region_name=os.environ.get("AWS_REGION")).send_email(
+        Source=source,
+        Destination={"ToAddresses": [to]},
+        Message={
+            "Subject": {"Data": subject, "Charset": "UTF-8"},
+            "Body": {"Html": {"Data": html_document, "Charset": "UTF-8"}},
+        },
+    )
