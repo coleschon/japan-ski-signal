@@ -39,6 +39,27 @@ def main() -> None:
         for key, value in result["forecast_horizon_median_cm"].items()
     )
     print(f"Open-Meteo current forecast-horizon snowfall medians: {forecasts}")
+    print("Top-ranked departure by resort:")
+    for resort_key, resort in config["resorts"].items():
+        resort_combos = [
+            combo for combo in result["combos"] if combo["resort_key"] == resort_key
+        ]
+        top = max(resort_combos, key=lambda combo: combo["total_score"])
+        print(
+            f"{resort['name']}: {top['departure']} total={top['total_score']:.3f} "
+            f"snow={top['components']['snow']:.3f} "
+            f"climatology={top['details']['climatology']:.3f}"
+        )
+    print("Beyond-horizon climatology by departure:")
+    for resort_key, resort in config["resorts"].items():
+        values = [
+            f"{combo['departure']} raw={combo['details']['climatology_raw']:.3f} "
+            f"adjusted={combo['details']['climatology']:.3f}"
+            for combo in result["combos"]
+            if combo["resort_key"] == resort_key
+            and combo["details"].get("climatology_raw") is not None
+        ]
+        print(f"{resort['name']}: {', '.join(values) if values else 'unavailable'}")
 
 
 if __name__ == "__main__":
