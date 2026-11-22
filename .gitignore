@@ -1,6 +1,7 @@
 .localdata/
 out/
 .terraform/
+infra/backend.hcl
 *.tfstate*
 *.zip
 .venv/
