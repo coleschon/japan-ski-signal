@@ -13,8 +13,17 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, value))
 
 
-def base_eligible(depth_cm: float, config: dict[str, Any]) -> bool:
-    return depth_cm >= config["snow"]["base_gate_cm"]
+def base_eligible(
+    depth_cm: float,
+    config: dict[str, Any],
+    *,
+    in_horizon: bool = True,
+) -> bool:
+    return not in_horizon or depth_cm >= config["snow"]["base_gate_cm"]
+
+
+def snow_window_in_horizon(departure: date, last_forecast_date: date | None) -> bool:
+    return last_forecast_date is not None and departure + timedelta(days=7) <= last_forecast_date
 
 
 def base_score(depth_cm: float, config: dict[str, Any]) -> float:
@@ -142,8 +151,8 @@ def climatology_score(
 
 def snow_score(
     *,
-    depth_cm: float,
-    forecast: EnsembleForecast,
+    depth_cm: float | None,
+    forecast: EnsembleForecast | None,
     climatology: ArchiveClimatology,
     anomaly: float,
     region: str,
@@ -151,11 +160,12 @@ def snow_score(
     config: dict[str, Any],
 ) -> tuple[float, dict[str, float | str | None]]:
     snow = config["snow"]
-    base = base_score(depth_cm, config)
-    start = departure - timedelta(days=2)
-    end = departure + timedelta(days=7)
-    last_forecast_date = max(forecast.dates)
-    if end <= last_forecast_date:
+    base = base_score(depth_cm, config) if depth_cm is not None else 0.5
+    last_forecast_date = max(forecast.dates) if forecast and forecast.dates else None
+    if snow_window_in_horizon(departure, last_forecast_date):
+        assert forecast is not None
+        start = departure - timedelta(days=2)
+        end = departure + timedelta(days=7)
         window_median = forecast_window_median(forecast, start, end)
         forecast_value = forecast_score(window_median, config)
         mix = snow["in_horizon_mix"]
@@ -168,14 +178,18 @@ def snow_score(
             "snow_window_median_cm": window_median,
         }
     climate = climatology_score(climatology, departure)
-    adjusted = enso_adjusted_climatology_score(climate, anomaly, region, config)
+    kind = enso_class(anomaly, config)
+    factor = config["snow"]["enso_factor"][kind][region]
+    adjusted = clamp(climate * factor)
     mix = snow["beyond_horizon_mix"]
     score = mix["base"] * base + mix["climatology"] * adjusted
     return clamp(score), {
         "base": base,
         "forecast": 0.5,
         "climatology": adjusted,
-        "enso_class": enso_class(anomaly, config),
+        "climatology_raw": climate,
+        "climatology_factor": factor,
+        "enso_class": kind,
         "snow_window_median_cm": None,
     }
 

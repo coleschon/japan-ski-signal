@@ -13,6 +13,8 @@ from ski_signal.scoring import (
     flight_score,
     forecast_score,
     lodging_score,
+    snow_score,
+    snow_window_in_horizon,
     total_score,
     yen_score,
 )
@@ -21,10 +23,81 @@ from ski_signal.scoring import (
 def test_base_gate_and_score():
     config = load_config()
     assert not base_eligible(29, config)
+    assert base_eligible(0, config, in_horizon=False)
     assert total_score({name: 1 for name in config["weights"]}, config, eligible=False) == 0
     assert base_score(30, config) == 0
     assert base_score(150, config) == 1
     assert base_score(90, config) == 0.5
+
+
+def test_base_gate_applies_only_to_in_horizon_snow_windows():
+    config = load_config()
+    forecast_start = date(2026, 1, 1)
+    forecast = EnsembleForecast(
+        [forecast_start + timedelta(days=offset) for offset in range(15)],
+        {},
+        "fixture",
+    )
+    in_horizon_departure = date(2026, 1, 1)
+    assert snow_window_in_horizon(in_horizon_departure, max(forecast.dates))
+    assert not base_eligible(21, config, in_horizon=True)
+    assert total_score(
+        {name: 1 for name in config["weights"]},
+        config,
+        eligible=base_eligible(21, config, in_horizon=True),
+    ) == 0
+
+    beyond_departure = date(2026, 1, 10)
+    assert not snow_window_in_horizon(beyond_departure, max(forecast.dates))
+    assert base_eligible(0, config, in_horizon=False)
+    climate_dates = []
+    snowfall = []
+    day = date(2020, 12, 1)
+    while day <= date(2021, 3, 31):
+        climate_dates.append(day)
+        snowfall.append(2.0)
+        day += timedelta(days=1)
+    score, details = snow_score(
+        depth_cm=0,
+        forecast=forecast,
+        climatology=ArchiveClimatology(climate_dates, snowfall, "fixture"),
+        anomaly=2.5,
+        region="hokkaido",
+        departure=beyond_departure,
+        config=config,
+    )
+    expected_climatology = details["climatology"]
+    assert expected_climatology != 0.5
+    assert score == pytest.approx(
+        config["snow"]["beyond_horizon_mix"]["base"] * 0
+        + config["snow"]["beyond_horizon_mix"]["climatology"] * expected_climatology
+    )
+    no_forecast_score, no_forecast_details = snow_score(
+        depth_cm=0,
+        forecast=None,
+        climatology=ArchiveClimatology(climate_dates, snowfall, "fixture"),
+        anomaly=2.5,
+        region="hokkaido",
+        departure=beyond_departure,
+        config=config,
+    )
+    assert no_forecast_details["climatology"] == expected_climatology
+    assert no_forecast_score == score
+    missing_depth_score, missing_depth_details = snow_score(
+        depth_cm=None,
+        forecast=None,
+        climatology=ArchiveClimatology(climate_dates, snowfall, "fixture"),
+        anomaly=2.5,
+        region="hokkaido",
+        departure=beyond_departure,
+        config=config,
+    )
+    assert base_eligible(0, config, in_horizon=False)
+    assert missing_depth_details["base"] == 0.5
+    assert missing_depth_score == pytest.approx(
+        config["snow"]["beyond_horizon_mix"]["base"] * 0.5
+        + config["snow"]["beyond_horizon_mix"]["climatology"] * expected_climatology
+    )
 
 
 def test_forecast_score():

@@ -5,7 +5,7 @@ Daily Lambda (06:00 America/Los_Angeles via EventBridge Scheduler) that scores e
 - Book-now alert: total score >= config.alerts.book_now_score.
 - Weekly digest (Mondays): ranked table of all combos with component scores.
 
-All numbers/rules live in `config.yaml`. Score = sum(weight_i * component_i), each component in [0,1]. Ineligible resorts (base below gate) score 0.
+All numbers/rules live in `config.yaml`. Score = sum(weight_i * component_i), each component in [0,1]. The base-depth gate applies only when the full snow window ends within the forecast horizon. Below-gate resorts in that window are ineligible and score 0; beyond-horizon combos remain eligible and use the configured base/climatology mix.
 
 ## Data sources (all verified reachable, no key unless noted)
 | Signal | Source |

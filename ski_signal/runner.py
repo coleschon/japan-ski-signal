@@ -6,8 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ski_signal.alerts import select_alerts
-from ski_signal.alerts import storm_windows
+from ski_signal.alerts import record_sent_alerts, select_alerts, storm_windows
 from ski_signal.budget import reserve_search, stalest_first
 from ski_signal.config import load_config
 from ski_signal.email import render_email, send_email, write_dry_run
@@ -32,6 +31,7 @@ from ski_signal.scoring import (
     lodging_score,
     run_date,
     snow_score,
+    snow_window_in_horizon,
     total_score,
     yen_score,
 )
@@ -251,7 +251,7 @@ def _refresh_serpapi(
 
     api_key = os.environ.get("SERPAPI_API_KEY")
     if no_serpapi or not api_key:
-        status["serpapi"] = "stale/unavailable"
+        status["serpapi"] = "skipped" if no_serpapi else "stale/unavailable"
         return flight_records, hotel_records, status
 
     groups = config["flight_groups"]
@@ -434,7 +434,6 @@ def run_signal(
         observation = depths[resort_key]
         depth_cm = observation.depth_cm if observation else None
         depth_values[resort_key] = depth_cm
-        eligible = depth_cm is None or base_eligible(depth_cm, config)
         status = statuses[resort_key]
         forecast = forecasts[resort_key]
         climate = climatologies[resort_key]
@@ -455,6 +454,15 @@ def run_signal(
         for departure in departures:
             trip_start = departure + timedelta(days=1)
             trip_end = departure + timedelta(days=7)
+            in_horizon = snow_window_in_horizon(
+                departure,
+                max(forecast.dates) if forecast is not None and forecast.dates else None,
+            )
+            eligible = depth_cm is None or base_eligible(
+                depth_cm,
+                config,
+                in_horizon=in_horizon,
+            )
             flight_group = resort["flight_group"]
             flight_record = flight_records.get((flight_group, departure))
             if not flight_record:
@@ -503,49 +511,47 @@ def run_signal(
             snow_value = 0.5
             if depth_cm is not None:
                 details["base"] = base_score(depth_cm, config)
-                if depth_cm < config["snow"]["base_gate_cm"]:
-                    snow_value = 0.0
-                elif forecast is not None:
-                    start = departure - timedelta(days=2)
-                    end = departure + timedelta(days=7)
-                    in_horizon = end <= max(forecast.dates)
-                    required_statuses = ["amedas", "openmeteo_ensemble"]
-                    if in_horizon:
-                        if status.get("openmeteo_ensemble") == "fresh":
-                            try:
-                                snow_value, snow_details = snow_score(
-                                    depth_cm=depth_cm,
-                                    forecast=forecast,
-                                    climatology=climate or ArchiveClimatology([], [], ""),
-                                    anomaly=anomaly or 0.0,
-                                    region=resort["region"],
-                                    departure=departure,
-                                    config=config,
-                                )
-                                details.update(snow_details)
-                            except Exception:
-                                LOGGER.exception("Forecast scoring failed for %s / %s", resort_key, departure)
-                                status["openmeteo_ensemble"] = "stale/unavailable"
-                        else:
-                            required_statuses.append("openmeteo_ensemble")
-                    elif climate is not None and anomaly is not None:
-                        if status.get("openmeteo_archive") == "fresh" and status.get("enso") == "fresh":
-                            try:
-                                snow_value, snow_details = snow_score(
-                                    depth_cm=depth_cm,
-                                    forecast=forecast,
-                                    climatology=climate,
-                                    anomaly=anomaly,
-                                    region=resort["region"],
-                                    departure=departure,
-                                    config=config,
-                                )
-                                details.update(snow_details)
-                            except Exception:
-                                LOGGER.exception("Climatology scoring failed for %s / %s", resort_key, departure)
-                    details["base"] = base_score(depth_cm, config)
-                else:
-                    status["openmeteo_ensemble"] = "stale/unavailable"
+            if not eligible:
+                snow_value = 0.0
+            elif in_horizon and forecast is not None:
+                if status.get("openmeteo_ensemble") == "fresh":
+                    try:
+                        snow_value, snow_details = snow_score(
+                            depth_cm=depth_cm,
+                            forecast=forecast,
+                            climatology=climate or ArchiveClimatology([], [], ""),
+                            anomaly=anomaly or 0.0,
+                            region=resort["region"],
+                            departure=departure,
+                            config=config,
+                        )
+                        details.update(snow_details)
+                    except Exception:
+                        LOGGER.exception("Forecast scoring failed for %s / %s", resort_key, departure)
+                        status["openmeteo_ensemble"] = "stale/unavailable"
+            elif (
+                climate is not None
+                and anomaly is not None
+                and status.get("openmeteo_archive") == "fresh"
+                and status.get("enso") == "fresh"
+            ):
+                try:
+                    snow_value, snow_details = snow_score(
+                        depth_cm=depth_cm,
+                        forecast=forecast,
+                        climatology=climate,
+                        anomaly=anomaly,
+                        region=resort["region"],
+                        departure=departure,
+                        config=config,
+                    )
+                    details.update(snow_details)
+                except Exception:
+                    LOGGER.exception("Climatology scoring failed for %s / %s", resort_key, departure)
+            if forecast is None:
+                status["openmeteo_ensemble"] = "stale/unavailable"
+            if depth_cm is None and "base" not in details:
+                details["base"] = 0.5
 
             fx_value = (
                 yen_score(fx_observation.rate, fx_observation.p10, fx_observation.p90)
@@ -561,7 +567,7 @@ def run_signal(
             }
             score = total_score(components, config, eligible=eligible)
             stale_sources = sorted(
-                name for name, value in status.items() if value == "stale/unavailable"
+                name for name, value in status.items() if value != "fresh"
             )
             combo = {
                 "resort_key": resort_key,
@@ -571,6 +577,7 @@ def run_signal(
                 "trip_end": trip_end.isoformat(),
                 "eligible": eligible,
                 "depth_cm": depth_cm,
+                "base_gate_cm": config["snow"]["base_gate_cm"],
                 "components": components,
                 "details": details,
                 "total_score": score,
@@ -620,6 +627,7 @@ def run_signal(
     if dry_run:
         output_path = write_dry_run(html_document, today)
         LOGGER.info("Dry-run email written to %s", output_path)
+        record_sent_alerts(alerts, today=today, store=store)
     elif alerts:
         send_email(
             html_document,
@@ -627,6 +635,7 @@ def run_signal(
             source=config["email_from"],
             subject=f"Japan ski trip signal — {today.isoformat()}",
         )
+        record_sent_alerts(alerts, today=today, store=store)
         output_path = None
     else:
         output_path = None

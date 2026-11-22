@@ -32,7 +32,7 @@ weights:          # must sum to 1.0
   yen: 0.05
 
 snow:
-  base_gate_cm: 30            # AMeDAS station depth below this -> resort ineligible (total score 0, no alerts)
+  base_gate_cm: 30            # AMeDAS depth below this gates in-horizon combos only (total score 0, no alerts)
   base_full_cm: 150           # base_score = clamp((depth - gate) / (full - gate), 0, 1)
   forecast_horizon_days: 15   # ECMWF IFS 0.25 ensemble (Open-Meteo ensemble API)
   forecast_full_cm: 100       # forecast_score = clamp(median_sum_cm / full, 0, 1); sum over trip days D+1..D+7 plus the 3 days before D+1

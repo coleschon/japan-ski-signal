@@ -18,7 +18,7 @@ def storm_windows(
         return []
     date_index = {day: index for index, day in enumerate(forecast.dates)}
     storms = []
-    for start_index, start in enumerate(forecast.dates):
+    for start in forecast.dates:
         lead = (start - today).days
         if not settings["lead_days_min"] <= lead <= settings["lead_days_max"]:
             continue
@@ -65,21 +65,20 @@ def select_alerts(
         depth = depths.get(resort)
         if depth is None:
             continue
-        for storm in storm_windows(forecast, today=today, depth_cm=depth, config=config):
-            dedupe_key = f"alert:storm:{resort}:{storm['window_start']}"
-            prior = store.get(dedupe_key)
-            should_send = True
-            if prior:
-                alerted_at = date.fromisoformat(prior["alerted_at"])
-                within_window = (today - alerted_at).days < storm_config["dedupe_days"]
-                growth = storm["median_cm"] >= prior["median_cm"] * (1 + storm_config["dedupe_growth"])
-                should_send = not within_window or growth
-            if should_send:
-                alerts.append({"type": "storm", "resort_key": resort, **storm})
-                store.put(
-                    dedupe_key,
-                    {"alerted_at": today.isoformat(), "median_cm": storm["median_cm"]},
-                )
+        storms = storm_windows(forecast, today=today, depth_cm=depth, config=config)
+        if not storms:
+            continue
+        storm = max(storms, key=lambda item: item["median_cm"])
+        dedupe_key = f"alert:storm:{resort}"
+        prior = store.get(dedupe_key)
+        should_send = True
+        if prior:
+            alerted_at = date.fromisoformat(prior["alerted_at"])
+            within_window = (today - alerted_at).days < storm_config["dedupe_days"]
+            growth = storm["median_cm"] >= prior["median_cm"] * (1 + storm_config["dedupe_growth"])
+            should_send = not within_window or growth
+        if should_send:
+            alerts.append({"type": "storm", "resort_key": resort, **storm})
 
     for combo in combos:
         if not combo["eligible"] or combo["total_score"] < config["alerts"]["book_now_score"]:
@@ -94,14 +93,37 @@ def select_alerts(
                     "score": combo["total_score"],
                 }
             )
-            store.put(dedupe_key, {"alerted_at": today.isoformat()})
 
     weekday = config["alerts"]["weekly_digest_weekday"]
     expected_weekday = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}[
         weekday
     ]
     digest_key = f"alert:digest:{today.isoformat()}"
-    if (today.weekday() == expected_weekday or force_digest) and not store.get(digest_key):
-        alerts.append({"type": "weekly_digest", "date": today.isoformat()})
-        store.put(digest_key, {"sent_at": datetime.now().isoformat()})
+    if today.weekday() == expected_weekday or force_digest:
+        if force_digest or not store.get(digest_key):
+            alerts.append({"type": "weekly_digest", "date": today.isoformat()})
     return alerts
+
+
+def record_sent_alerts(
+    alerts: list[dict[str, Any]],
+    *,
+    today: date,
+    store: Store,
+) -> None:
+    for alert in alerts:
+        if alert["type"] == "storm":
+            key = f"alert:storm:{alert['resort_key']}"
+            value = {
+                "alerted_at": today.isoformat(),
+                "median_cm": alert["median_cm"],
+            }
+        elif alert["type"] == "book_now":
+            key = f"alert:book-now:{alert['resort_key']}:{alert['departure']}"
+            value = {"alerted_at": today.isoformat()}
+        elif alert["type"] == "weekly_digest":
+            key = f"alert:digest:{today.isoformat()}"
+            value = {"sent_at": datetime.now().isoformat()}
+        else:
+            continue
+        store.put(key, value)
