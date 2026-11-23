@@ -18,11 +18,15 @@ def storm_windows(
         return []
     date_index = {day: index for index, day in enumerate(forecast.dates)}
     storms = []
+    window_days = max(1, settings["window_hours"] // 24)
     for start in forecast.dates:
         lead = (start - today).days
         if not settings["lead_days_min"] <= lead <= settings["lead_days_max"]:
             continue
-        days = [start + timedelta(days=offset) for offset in range(3)]
+        days = [
+            start + timedelta(days=offset)
+            for offset in range(window_days)
+        ]
         if any(day not in date_index for day in days):
             continue
         totals = []

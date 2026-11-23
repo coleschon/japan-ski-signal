@@ -65,6 +65,24 @@ def test_storm_qualifies_at_eight_days_only():
     )
 
 
+def test_storm_window_uses_configured_duration():
+    config = load_config()
+    config["alerts"]["storm"]["window_hours"] = 48
+    today = date(2026, 1, 1)
+    dates = [today + timedelta(days=offset) for offset in range(15)]
+    members = {f"member{index:02d}": [0.0] * 15 for index in range(12)}
+    for values in members.values():
+        values[8:11] = [20.0, 20.0, 20.0]
+    forecast = EnsembleForecast(dates, members, "fixture")
+
+    assert storm_windows(
+        forecast,
+        today=today,
+        depth_cm=60,
+        config=config,
+    ) == []
+
+
 def test_overlapping_storms_collapse_and_dedupe_after_delivery(tmp_path):
     config = load_config()
     store = LocalStore(tmp_path)
