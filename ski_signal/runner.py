@@ -674,5 +674,5 @@ def run_signal(
         "forecast_horizon_median_cm": horizon_medians,
         "enso_anomaly": anomaly,
         "usd_jpy": fx_observation.rate if fx_observation else None,
-        "event_count": len(event_values),
+        "event_count": len(event_values or []),
     }
