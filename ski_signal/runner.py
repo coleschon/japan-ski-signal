@@ -671,6 +671,8 @@ def run_signal(
         LOGGER.info("Dry-run email written to %s", output_path)
         record_sent_alerts(alerts, today=today, store=store)
     elif alerts:
+        if not config.get("email_to") or not config.get("email_from"):
+            raise ValueError("EMAIL_TO and EMAIL_FROM must be set to send email")
         send_email(
             html_document,
             to=config["email_to"],
