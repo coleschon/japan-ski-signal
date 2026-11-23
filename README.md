@@ -56,7 +56,7 @@ terraform init -backend-config=backend.hcl
 cd ..
 ./scripts/build.sh
 cd infra
-terraform apply -var "serpapi_api_key=${SERPAPI_API_KEY}"
+TF_VAR_serpapi_api_key="$SERPAPI_API_KEY" terraform apply
 ```
 
 Terraform provisions the Lambda, least-privilege runtime and scheduler roles, on-demand DynamoDB table, S3 snapshot bucket with 90-day expiration, daily 06:00 America/Los_Angeles schedule, CloudWatch log group with 14-day retention, and an SES email identity for the configured recipient. After apply, click the verification link SES sends to `email_to`; SES sandbox accounts also require the recipient to be verified before email delivery.
