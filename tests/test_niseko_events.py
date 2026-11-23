@@ -51,3 +51,37 @@ def test_nightlife_keywords_use_title_and_description_only_with_word_boundaries(
     )
 
     assert [event.title for event in events] == ["Winter Gathering"]
+
+
+def test_yearless_event_date_rolls_forward_after_sixty_days():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>Snow Bar Night</h3>
+          <div class="event-description">Jan 15</div>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 12, 10),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2027, 1, 15)
+
+
+def test_event_datetime_year_takes_precedence_over_visible_yearless_date():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>Snow Bar Night</h3>
+          <time datetime="2027-02-10">Jan 15</time>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 12, 10),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2027, 2, 10)

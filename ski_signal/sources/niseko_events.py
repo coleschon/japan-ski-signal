@@ -1,5 +1,5 @@
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Iterable
 from urllib.parse import urljoin
 
@@ -25,33 +25,46 @@ DATE_PATTERNS = (
 )
 
 
-def _date_matches(text: str, default_year: int) -> list[date]:
-    found: list[tuple[int, int, int, int]] = []
+def _date_matches(
+    text: str,
+    default_year: int,
+    *,
+    today: date | None = None,
+) -> list[date]:
+    found: list[tuple[int, int, int, int, bool]] = []
     for pattern_index, pattern in enumerate(DATE_PATTERNS):
         for match in pattern.finditer(text):
             groups = match.groups()
             try:
                 if pattern_index == 0:
                     year, month, day = map(int, groups)
+                    has_year = True
                 elif pattern_index == 1:
                     month, day, year = groups
+                    has_year = year is not None
                     month = MONTHS[month.lower()]
                     year = int(year) if year else default_year
                     day = int(day)
                 else:
                     day, month, year = groups
+                    has_year = year is not None
                     month = MONTHS[month.lower()]
                     year = int(year) if year else default_year
                     day = int(day)
-                found.append((match.start(), year, month, day))
+                found.append((match.start(), year, month, day, has_year))
             except (ValueError, KeyError):
                 continue
     dates: list[date] = []
-    for _, year, month, day in sorted(found):
+    for _, year, month, day, has_year in sorted(found):
         try:
             parsed = date(year, month, day)
         except ValueError:
             continue
+        if not has_year and today and parsed < today - timedelta(days=60):
+            try:
+                parsed = date(today.year + 1, month, day)
+            except ValueError:
+                continue
         if parsed not in dates:
             dates.append(parsed)
     return dates
@@ -112,10 +125,16 @@ def parse_events(
                 description = re.sub(re.escape(venue), " ", description, flags=re.I)
         if not any(pattern.search(f"{title_text} {description}") for pattern in patterns):
             continue
-        dates = _date_matches(text, today.year)
+        dates = [
+            parsed
+            for time_tag in block.select("time[datetime]")
+            for parsed in _date_matches(
+                time_tag.get("datetime", ""),
+                today.year,
+            )
+        ]
         if not dates:
-            for time_tag in block.select("time[datetime]"):
-                dates.extend(_date_matches(time_tag.get("datetime", ""), today.year))
+            dates = _date_matches(text, today.year, today=today)
         if not dates:
             continue
         start = min(dates)
