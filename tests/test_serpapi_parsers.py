@@ -1,3 +1,6 @@
+from datetime import date
+from urllib.parse import parse_qs, urlsplit
+
 from ski_signal.config import load_config
 from ski_signal.scoring import flight_score
 from ski_signal.sources.common import redact_api_key
@@ -32,13 +35,28 @@ def test_serpapi_api_key_is_redacted_from_error_messages():
 
 
 def test_hotel_parser_sorts_top_three():
-    result = parse_hotels({
-        "properties": [
-            {"name": "B", "link": "https://example.com/b", "total_rate": {"extracted_lowest": 200}},
-            {"name": "A", "link": "https://example.com/a", "total_rate": {"extracted_lowest": 100}},
-            {"name": "C", "total_rate": {"extracted_lowest": 300}},
-            {"name": "D", "total_rate": {"extracted_lowest": 400}},
-        ]
-    })
+    result = parse_hotels(
+        {
+            "properties": [
+                {"name": "B", "link": "https://example.com/b", "total_rate": {"extracted_lowest": 200}},
+                {"name": "A", "link": "https://example.com/a", "total_rate": {"extracted_lowest": 100}},
+                {"name": "C", "property_token": "opaque-token", "total_rate": {"extracted_lowest": 300}},
+                {"name": "D", "total_rate": {"extracted_lowest": 400}},
+            ],
+        },
+        query="Niseko Hirafu",
+        checkin=date(2026, 12, 5),
+        checkout=date(2026, 12, 11),
+        adults=3,
+    )
     assert result.lowest_total == 100
     assert [hotel.name for hotel in result.properties] == ["A", "B", "C"]
+    c_url = urlsplit(result.properties[2].url)
+    assert c_url.netloc == "www.google.com"
+    assert c_url.path == "/travel/search"
+    assert parse_qs(c_url.query) == {
+        "q": ["C Niseko Hirafu"],
+        "checkin": ["2026-12-05"],
+        "checkout": ["2026-12-11"],
+        "adults": ["3"],
+    }
