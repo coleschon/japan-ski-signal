@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import requests
+
 from ski_signal.models import DepthObservation
 from ski_signal.sources.common import get_json, get_text
 
@@ -56,8 +58,14 @@ def extract_snow(payload: dict[str, object]) -> tuple[str, float] | None:
 def fetch_depth(station: str) -> DepthObservation:
     latest = _parse_latest_time(get_text(f"{BASE_URL}/data/latest_time.txt").strip())
     current_url, previous_url = point_block_urls(station, latest)
+    request_errors = []
     for url in (current_url, previous_url):
-        snow = extract_snow(get_json(url))
+        try:
+            payload = get_json(url)
+        except requests.RequestException as error:
+            request_errors.append(error)
+            continue
+        snow = extract_snow(payload)
         if snow is not None:
             timestamp, depth = snow
             observed = datetime.strptime(timestamp, "%Y%m%d%H%M%S").replace(tzinfo=JST)
@@ -67,4 +75,6 @@ def fetch_depth(station: str) -> DepthObservation:
                 observed_at=observed.isoformat(),
                 source_url=url,
             )
+    if len(request_errors) == 2:
+        raise request_errors[-1]
     raise ValueError(f"AMeDAS response has no valid snow measurement for {station}")
