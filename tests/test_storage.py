@@ -1,7 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import Mock
 from zoneinfo import ZoneInfo
+
+import pytest
 
 import ski_signal.runner as runner
 from ski_signal.config import load_config
@@ -152,3 +154,34 @@ def test_zero_alert_refresh_limit_selects_no_extra_searches(tmp_path, monkeypatc
     )
 
     assert calls == []
+
+
+def test_lodging_baseline_excludes_previous_season_quotes(tmp_path):
+    config = load_config()
+    store = LocalStore(tmp_path)
+    departures = [date(2026, 12, 4) + timedelta(days=7 * index) for index in range(5)]
+    offset = config["trip"]["hotel_checkin_offset_days"]
+    prices = [100, 200, 300, 400, 500]
+
+    for departure, price in zip(departures, prices):
+        checkin = departure + timedelta(days=offset)
+        store.put(
+            f"observation:hotel:niseko:{checkin.isoformat()}",
+            {"lowest_total": price},
+        )
+    first_checkin = departures[0] + timedelta(days=offset)
+    old_checkin = first_checkin.replace(year=first_checkin.year - 1)
+    store.put(
+        f"observation:hotel:niseko:{old_checkin.isoformat()}",
+        {"lowest_total": 1},
+    )
+
+    baseline = runner._hotel_price_baseline(
+        store,
+        "niseko",
+        departures,
+        offset,
+    )
+
+    assert sorted(baseline) == prices
+    assert runner.lodging_score(300, baseline, config) == pytest.approx(0.4)

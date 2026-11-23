@@ -411,6 +411,25 @@ def _record_events(record: dict[str, Any] | None) -> list[dict[str, Any]]:
     ]
 
 
+def _hotel_price_baseline(
+    store: Store,
+    resort_key: str,
+    departures: list[date],
+    checkin_offset_days: int,
+) -> list[float]:
+    prefix = f"observation:hotel:{resort_key}:"
+    candidate_checkins = {
+        (departure + timedelta(days=checkin_offset_days)).isoformat()
+        for departure in departures
+    }
+    return [
+        row["lowest_total"]
+        for key, row in store.scan(prefix)
+        if key.removeprefix(prefix) in candidate_checkins
+        and row.get("lowest_total") is not None
+    ]
+
+
 def run_signal(
     *,
     dry_run: bool = False,
@@ -502,12 +521,12 @@ def run_signal(
             hotel_record = hotel_records.get((resort_key, checkin)) or store.get(
                 f"observation:hotel:{resort_key}:{checkin.isoformat()}"
             )
-            all_hotel_rows = store.scan(f"observation:hotel:{resort_key}:")
-            hotel_prices = [
-                row["lowest_total"]
-                for _, row in all_hotel_rows
-                if row.get("lowest_total") is not None
-            ]
+            hotel_prices = _hotel_price_baseline(
+                store,
+                resort_key,
+                departures,
+                config["trip"]["hotel_checkin_offset_days"],
+            )
             lodging_value = lodging_score(
                 hotel_record.get("lowest_total") if hotel_record else None,
                 hotel_prices,
