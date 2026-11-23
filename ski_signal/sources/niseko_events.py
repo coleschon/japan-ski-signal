@@ -80,12 +80,25 @@ def parse_events(
 ) -> list[SkiEvent]:
     today = today or date.today()
     soup = BeautifulSoup(html, "html.parser")
-    terms = tuple(keyword.casefold() for keyword in keywords)
+    patterns = tuple(
+        re.compile(rf"\b{re.escape(keyword)}\b", re.I) for keyword in keywords
+    )
     events: list[SkiEvent] = []
     seen: set[tuple[str, date, date]] = set()
     for block in _event_blocks(soup):
         text = " ".join(block.stripped_strings)
-        if not text or not any(term in text.casefold() for term in terms):
+        if not text:
+            continue
+        title_node = block.find(["h1", "h2", "h3", "h4"])
+        title_text = " ".join(title_node.stripped_strings) if title_node else ""
+        description = " ".join(
+            " ".join(node.stripped_strings)
+            for node in block.select(
+                ".tribe-events-calendar-list__event-description, "
+                ".event-description, [itemprop='description']"
+            )
+        )
+        if not any(pattern.search(f"{title_text} {description}") for pattern in patterns):
             continue
         dates = _date_matches(text, today.year)
         if not dates:
@@ -95,8 +108,7 @@ def parse_events(
             continue
         start = min(dates)
         end = max(dates)
-        title_node = block.find(["h1", "h2", "h3", "h4"])
-        title = " ".join(title_node.stripped_strings) if title_node else text[:180]
+        title = title_text or text[:180]
         identity = (title, start, end)
         if identity in seen:
             continue
