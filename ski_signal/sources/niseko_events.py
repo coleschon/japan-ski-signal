@@ -98,6 +98,18 @@ def parse_events(
                 ".event-description, [itemprop='description']"
             )
         )
+        description = re.sub(
+            r"\b(?:location|venue)\s*:\s*.*?(?=\b(?:time|date)\s*:|$)",
+            " ",
+            description,
+            flags=re.I,
+        )
+        for venue_node in block.select(
+            ".tribe-events-calendar-list__event-venue, address, [itemprop='location']"
+        ):
+            venue = " ".join(venue_node.stripped_strings)
+            if venue:
+                description = re.sub(re.escape(venue), " ", description, flags=re.I)
         if not any(pattern.search(f"{title_text} {description}") for pattern in patterns):
             continue
         dates = _date_matches(text, today.year)

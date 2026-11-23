@@ -31,6 +31,7 @@ def test_nightlife_keywords_use_title_and_description_only_with_word_boundaries(
     <ul>
       <li class="event">
         <h3>Barbecue Social</h3>
+        <div class="event-description">A barbecue gathering. Location: The DJ Bar Lounge</div>
         <address>DJ Bar</address>
         <time datetime="2026-12-01">December 1, 2026</time>
       </li>
