@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import ski_signal.runner as runner
 from ski_signal.config import load_config
-from ski_signal.models import DepthObservation
+from ski_signal.models import DepthObservation, EnsembleForecast
 from ski_signal.runner import _persist_source, run_signal
 from ski_signal.storage import DynamoStore, LocalStore
 
@@ -113,3 +113,42 @@ def test_run_signal_completes_when_event_fetch_fails_without_cache(tmp_path, mon
     assert result["event_count"] == 0
     assert result["combos"][0]["events"] == []
     assert result["combos"][0]["source_status"]["niseko_events"] == "stale/unavailable"
+
+
+def test_zero_alert_refresh_limit_selects_no_extra_searches(tmp_path, monkeypatch):
+    config = load_config()
+    config["serpapi"]["daily_flight_searches"] = 0
+    config["serpapi"]["daily_hotel_searches"] = 0
+    config["serpapi"]["alert_refresh_searches"] = 0
+    today = date(2026, 11, 22)
+    departure = date(2026, 12, 4)
+    forecast = EnsembleForecast([], {}, "fixture")
+    depth = DepthObservation("16217", 60, "2026-11-22T08:00:00+09:00", "fixture")
+    calls = []
+
+    def unexpected_search(**kwargs):
+        calls.append(kwargs)
+        raise RuntimeError("search should not be selected")
+
+    monkeypatch.setenv("SERPAPI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        runner,
+        "storm_windows",
+        lambda *args, **kwargs: [
+            {"window_start": "2026-12-04", "window_end": "2026-12-06"}
+        ],
+    )
+    monkeypatch.setattr(runner, "fetch_flights", unexpected_search)
+    monkeypatch.setattr(runner, "fetch_hotels", unexpected_search)
+
+    runner._refresh_serpapi(
+        config,
+        LocalStore(tmp_path),
+        [departure],
+        today,
+        no_serpapi=False,
+        forecasts={"niseko": forecast},
+        depths={"niseko": depth},
+    )
+
+    assert calls == []

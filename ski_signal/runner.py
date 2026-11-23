@@ -315,21 +315,21 @@ def _refresh_serpapi(
                     alert_pairs.add((resort_key, departure))
     extra_limit = config["serpapi"]["alert_refresh_searches"]
     for resort_key, departure in sorted(alert_pairs, key=lambda pair: (pair[1], pair[0])):
+        if extra_limit <= 0:
+            break
         flight_key = f"observation:flight:{config['resorts'][resort_key]['flight_group']}:{departure.isoformat()}"
         if flight_key not in selected_flights:
             selected_flights.add(flight_key)
             extra_limit -= 1
-            if extra_limit <= 0:
-                break
     extra_limit = config["serpapi"]["alert_refresh_searches"]
     for resort_key, departure in sorted(alert_pairs, key=lambda pair: (pair[1], pair[0])):
+        if extra_limit <= 0:
+            break
         checkin = departure + timedelta(days=config["trip"]["hotel_checkin_offset_days"])
         hotel_key = f"observation:hotel:{resort_key}:{checkin.isoformat()}"
         if hotel_key not in selected_hotels:
             selected_hotels.add(hotel_key)
             extra_limit -= 1
-            if extra_limit <= 0:
-                break
 
     authorize = lambda: reserve_search(
         store,
