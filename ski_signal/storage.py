@@ -27,7 +27,7 @@ def _json_default(value: Any) -> str:
 
 
 def _to_dynamodb_value(value: Any) -> Any:
-    return json.loads(json.dumps(value, default=str), parse_float=Decimal)
+    return json.loads(json.dumps(value, default=_json_default), parse_float=Decimal)
 
 
 def _from_dynamodb_value(value: Any) -> Any:
