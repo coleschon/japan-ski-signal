@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 
 from ski_signal.config import load_config
+from ski_signal.scoring import events_score
 from ski_signal.sources.niseko_events import parse_events
 
 
@@ -51,7 +52,6 @@ def test_nightlife_keywords_use_title_and_description_only_with_word_boundaries(
     )
 
     assert [event.title for event in events] == ["Winter Gathering"]
-
 
 def test_yearless_event_date_rolls_forward_after_sixty_days():
     events = parse_events(
@@ -177,8 +177,6 @@ def test_matching_yearless_text_and_time_tag_date_collapse_to_one_date():
     assert len(events) == 1
     assert events[0].start_date == date(2027, 2, 10)
     assert events[0].end_date == date(2027, 2, 10)
-
-
 def test_partial_time_datetime_uses_date_from_visible_text():
     events = parse_events(
         """
@@ -195,8 +193,6 @@ def test_partial_time_datetime_uses_date_from_visible_text():
     assert len(events) == 1
     assert events[0].start_date == date(2026, 12, 25)
     assert events[0].end_date == date(2026, 12, 25)
-
-
 def test_partial_time_datetime_does_not_duplicate_a_text_date():
     events = parse_events(
         """
@@ -214,3 +210,10 @@ def test_partial_time_datetime_does_not_duplicate_a_text_date():
     assert len(events) == 1
     assert events[0].start_date == date(2026, 12, 25)
     assert events[0].end_date == date(2026, 12, 31)
+
+
+def test_successful_empty_fetch_and_unavailable_events_have_distinct_scores():
+    config = load_config()
+    trip_days = [date(2026, 12, 25)]
+    assert events_score([], trip_days, config) == 0
+    assert events_score(None, trip_days, config) == 0.5
