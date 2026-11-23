@@ -170,7 +170,19 @@ def _event_text_date_parts(block: Tag) -> list[tuple[int, int, int | None]]:
         ]
         if not matching_time_parts:
             if not time_dates:
-                parts.extend(time_text_parts)
+                for month, day, year in time_text_parts:
+                    is_duplicate = any(
+                        previous_month == month
+                        and previous_day == day
+                        and (
+                            previous_year is None
+                            or year is None
+                            or previous_year == year
+                        )
+                        for previous_month, previous_day, previous_year in parts
+                    )
+                    if not is_duplicate:
+                        parts.append((month, day, year))
             continue
         for month, day, year in time_text_parts:
             matching_time_date = next(

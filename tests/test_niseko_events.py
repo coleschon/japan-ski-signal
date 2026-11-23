@@ -195,3 +195,22 @@ def test_partial_time_datetime_uses_date_from_visible_text():
     assert len(events) == 1
     assert events[0].start_date == date(2026, 12, 25)
     assert events[0].end_date == date(2026, 12, 25)
+
+
+def test_partial_time_datetime_does_not_duplicate_a_text_date():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>Snow Bar Night</h3>
+          <div class="event-description">December 25 – December 31</div>
+          <time datetime="2026-12">December 25</time>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 12, 1),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2026, 12, 25)
+    assert events[0].end_date == date(2026, 12, 31)
