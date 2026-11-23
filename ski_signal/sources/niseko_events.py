@@ -10,14 +10,17 @@ from ski_signal.sources.common import get_text
 
 
 SITE = "https://www.niseko-village.com/events/"
+MONTH_NAMES = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
 MONTHS = {
-    month.lower(): index
-    for index, month in enumerate(
-        ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"),
-        start=1,
-    )
+    month.lower(): index for index, month in enumerate(MONTH_NAMES, start=1)
 }
-MONTH_PATTERN = "|".join(MONTHS)
+MONTHS.update(
+    {month[:3].lower(): index for index, month in enumerate(MONTH_NAMES, start=1)}
+)
+MONTH_PATTERN = "|".join(sorted(MONTHS, key=len, reverse=True))
 DATE_PATTERNS = (
     re.compile(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b"),
     re.compile(rf"\b({MONTH_PATTERN})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?[,]?\s*(20\d{{2}})?\b", re.I),

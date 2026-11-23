@@ -25,8 +25,9 @@ def test_source_request_errors_redact_api_keys(fetcher):
             response.url = url
             return response
 
+    url = "https://example.com/data?api_key=SECRET"
     with pytest.raises(requests.HTTPError) as raised:
-        fetcher("https://example.com/data?api_key=SECRET", client=Client())
+        fetcher(url, client=Client())
 
     formatted = "".join(
         traceback.format_exception(raised.type, raised.value, raised.tb)
