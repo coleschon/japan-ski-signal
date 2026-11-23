@@ -117,6 +117,28 @@ def test_run_signal_completes_when_event_fetch_fails_without_cache(tmp_path, mon
     assert result["combos"][0]["source_status"]["niseko_events"] == "stale/unavailable"
 
 
+def test_live_run_without_email_stops_before_fetching(tmp_path, monkeypatch):
+    config = load_config()
+    config["email_to"] = None
+    store = LocalStore(tmp_path / "store")
+
+    def unexpected_fetch(*args, **kwargs):
+        pytest.fail("fetch should not be called")
+
+    monkeypatch.setattr(runner, "_refresh_serpapi", unexpected_fetch)
+    monkeypatch.setattr(runner, "_load_sources", unexpected_fetch)
+
+    with pytest.raises(
+        ValueError,
+        match="EMAIL_TO and EMAIL_FROM must be set to send email",
+    ):
+        run_signal(
+            dry_run=False,
+            config=config,
+            store=store,
+        )
+
+
 def test_zero_alert_refresh_limit_selects_no_extra_searches(tmp_path, monkeypatch):
     config = load_config()
     config["serpapi"]["daily_flight_searches"] = 0
