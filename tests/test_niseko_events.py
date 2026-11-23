@@ -85,3 +85,76 @@ def test_event_datetime_year_takes_precedence_over_visible_yearless_date():
 
     assert len(events) == 1
     assert events[0].start_date == date(2027, 2, 10)
+
+
+def test_yearless_range_uses_time_tag_year_and_wraps_forward():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>New Year Bar Night</h3>
+          <div class="event-description">December 31 – January 1</div>
+          <time datetime="2026-12-31">December 31</time>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 4, 15),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2026, 12, 31)
+    assert events[0].end_date == date(2027, 1, 1)
+
+
+def test_yearless_date_before_explicit_year_uses_the_explicit_year():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>Snow Bar Night</h3>
+          <div class="event-description">January 1 – January 5, 2026</div>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 4, 15),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2026, 1, 1)
+    assert events[0].end_date == date(2026, 1, 5)
+
+
+def test_yearless_date_before_explicit_next_year_wraps_backward():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>New Year Bar Night</h3>
+          <div class="event-description">Dec 30 – Jan 2, 2027</div>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 4, 15),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2026, 12, 30)
+    assert events[0].end_date == date(2027, 1, 2)
+
+
+def test_matching_yearless_text_and_time_tag_date_collapse_to_one_date():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>Snow Bar Night</h3>
+          <time datetime="2027-02-10">February 10</time>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 4, 15),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2027, 2, 10)
+    assert events[0].end_date == date(2027, 2, 10)

@@ -28,48 +28,133 @@ DATE_PATTERNS = (
 )
 
 
-def _date_matches(
-    text: str,
-    default_year: int,
-    *,
-    today: date | None = None,
-) -> list[date]:
-    found: list[tuple[int, int, int, int, bool]] = []
+def _date_parts(text: str) -> list[tuple[int, int, int | None]]:
+    found: list[tuple[int, int, int, int | None]] = []
     for pattern_index, pattern in enumerate(DATE_PATTERNS):
         for match in pattern.finditer(text):
             groups = match.groups()
             try:
                 if pattern_index == 0:
                     year, month, day = map(int, groups)
-                    has_year = True
                 elif pattern_index == 1:
                     month, day, year = groups
-                    has_year = year is not None
                     month = MONTHS[month.lower()]
-                    year = int(year) if year else default_year
+                    year = int(year) if year else None
                     day = int(day)
                 else:
                     day, month, year = groups
-                    has_year = year is not None
                     month = MONTHS[month.lower()]
-                    year = int(year) if year else default_year
+                    year = int(year) if year else None
                     day = int(day)
-                found.append((match.start(), year, month, day, has_year))
+                date(year or 2000, month, day)
+                found.append((match.start(), month, day, year))
             except (ValueError, KeyError):
                 continue
-    dates: list[date] = []
-    for _, year, month, day, has_year in sorted(found):
+    return [(month, day, year) for _, month, day, year in sorted(found)]
+
+
+def _date_in_year(month: int, day: int, year: int, direction: int) -> date:
+    for offset in range(8):
         try:
-            parsed = date(year, month, day)
+            return date(year + direction * offset, month, day)
         except ValueError:
-            continue
-        if not has_year and today and parsed < today - timedelta(days=60):
-            try:
-                parsed = date(today.year + 1, month, day)
-            except ValueError:
-                continue
-        if parsed not in dates:
-            dates.append(parsed)
+            if (month, day) != (2, 29):
+                raise
+    raise ValueError(f"No valid year for {month}-{day} near {year}")
+
+
+def _assign_text_date_years(
+    parts: list[tuple[int, int, int | None]],
+    time_dates: list[date],
+    today: date,
+) -> list[date]:
+    if not parts:
+        return []
+
+    explicit_indices = [
+        index for index, (_, _, year) in enumerate(parts) if year is not None
+    ]
+    assigned: list[date | None] = [None] * len(parts)
+    if explicit_indices:
+        anchor = explicit_indices[0]
+        month, day, year = parts[anchor]
+        assigned[anchor] = date(year, month, day)
+        for index in range(anchor - 1, -1, -1):
+            month, day, _ = parts[index]
+            next_date = assigned[index + 1]
+            candidate = _date_in_year(month, day, next_date.year, -1)
+            if candidate > next_date:
+                candidate = _date_in_year(month, day, next_date.year - 1, -1)
+            assigned[index] = candidate
+        previous = assigned[anchor]
+        for index in range(anchor + 1, len(parts)):
+            month, day, year = parts[index]
+            if year is None:
+                candidate = _date_in_year(month, day, previous.year, 1)
+                if candidate < previous:
+                    candidate = _date_in_year(month, day, previous.year + 1, 1)
+            else:
+                candidate = date(year, month, day)
+            assigned[index] = candidate
+            previous = candidate
+    else:
+        month, day, _ = parts[0]
+        anchor_year = min(time_dates).year if time_dates else today.year
+        first = _date_in_year(month, day, anchor_year, 1)
+        if not time_dates and first < today - timedelta(days=60):
+            first = _date_in_year(month, day, first.year + 1, 1)
+        assigned[0] = first
+        previous = first
+        for index in range(1, len(parts)):
+            month, day, _ = parts[index]
+            candidate = _date_in_year(month, day, previous.year, 1)
+            if candidate < previous:
+                candidate = _date_in_year(month, day, previous.year + 1, 1)
+            assigned[index] = candidate
+            previous = candidate
+
+    return [parsed for parsed in assigned if parsed is not None]
+
+
+def _dates_from_time_tag(time_tag: Tag) -> list[date]:
+    dates = []
+    for month, day, year in _date_parts(time_tag.get("datetime", "")):
+        if year is not None:
+            parsed = date(year, month, day)
+            if parsed not in dates:
+                dates.append(parsed)
+    return dates
+
+
+def _visible_event_date_text(block: Tag) -> str:
+    include_time_text = {}
+    for time_tag in block.select("time[datetime]"):
+        time_dates = _dates_from_time_tag(time_tag)
+        text_parts = _date_parts(" ".join(time_tag.stripped_strings))
+        include_time_text[id(time_tag)] = any(
+            part_month == time_date.month
+            and part_day == time_date.day
+            and (part_year is None or part_year == time_date.year)
+            for part_month, part_day, part_year in text_parts
+            for time_date in time_dates
+        )
+    return " ".join(
+        text.strip()
+        for text in block.find_all(string=True)
+        if text.strip()
+        and (
+            (time_tag := text.find_parent("time", attrs={"datetime": True})) is None
+            or include_time_text.get(id(time_tag), False)
+        )
+    )
+
+
+def _time_tag_dates(block: Tag) -> list[date]:
+    dates = []
+    for time_tag in block.select("time[datetime]"):
+        for parsed in _dates_from_time_tag(time_tag):
+            if parsed not in dates:
+                dates.append(parsed)
     return dates
 
 
@@ -128,16 +213,13 @@ def parse_events(
                 description = re.sub(re.escape(venue), " ", description, flags=re.I)
         if not any(pattern.search(f"{title_text} {description}") for pattern in patterns):
             continue
-        dates = [
-            parsed
-            for time_tag in block.select("time[datetime]")
-            for parsed in _date_matches(
-                time_tag.get("datetime", ""),
-                today.year,
-            )
-        ]
-        if not dates:
-            dates = _date_matches(text, today.year, today=today)
+        time_dates = _time_tag_dates(block)
+        text_dates = _assign_text_date_years(
+            _date_parts(_visible_event_date_text(block)),
+            time_dates,
+            today,
+        )
+        dates = sorted(set(text_dates + time_dates))
         if not dates:
             continue
         start = min(dates)
