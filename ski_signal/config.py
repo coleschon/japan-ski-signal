@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Any
 
@@ -23,4 +24,8 @@ def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     if not isinstance(config, dict):
         raise ValueError("Configuration must be a YAML mapping")
     validate_config(config)
+    for name in ("email_to", "email_from"):
+        value = os.environ.get(name.upper())
+        if value is not None:
+            config[name] = value
     return config
