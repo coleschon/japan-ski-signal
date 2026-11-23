@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -23,6 +24,22 @@ def _json_default(value: Any) -> str:
 
         return asdict(value)
     raise TypeError(f"Cannot serialize {type(value).__name__}")
+
+
+def _to_dynamodb_value(value: Any) -> Any:
+    return json.loads(json.dumps(value, default=str), parse_float=Decimal)
+
+
+def _from_dynamodb_value(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        if value == value.to_integral_value():
+            return int(value)
+        return float(value)
+    if isinstance(value, dict):
+        return {key: _from_dynamodb_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_from_dynamodb_value(item) for item in value]
+    return value
 
 
 class LocalStore:
@@ -73,10 +90,12 @@ class DynamoStore:
     def get(self, key: str, default: Any = None) -> Any:
         response = self.table.get_item(Key={"pk": key, "sk": "value"})
         item = response.get("Item")
-        return default if item is None else item["value"]
+        return default if item is None else _from_dynamodb_value(item["value"])
 
     def put(self, key: str, value: Any) -> None:
-        self.table.put_item(Item={"pk": key, "sk": "value", "value": value})
+        self.table.put_item(
+            Item={"pk": key, "sk": "value", "value": _to_dynamodb_value(value)}
+        )
 
     def scan(self, prefix: str) -> list[tuple[str, Any]]:
         from boto3.dynamodb.conditions import Attr
@@ -87,7 +106,10 @@ class DynamoStore:
         }
         while True:
             response = self.table.scan(**kwargs)
-            rows.extend((item["pk"], item["value"]) for item in response.get("Items", []))
+            rows.extend(
+                (item["pk"], _from_dynamodb_value(item["value"]))
+                for item in response.get("Items", [])
+            )
             if "LastEvaluatedKey" not in response:
                 return rows
             kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]

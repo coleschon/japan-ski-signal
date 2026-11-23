@@ -86,6 +86,13 @@ def _snapshot(name: str, value: Any, enabled: bool = True) -> None:
         LOGGER.exception("Could not write %s raw snapshot", name)
 
 
+def _persist_source(store: Store, key: str, value: Any, source: str) -> None:
+    try:
+        store.put(key, value)
+    except Exception:
+        LOGGER.exception("Could not persist %s source data", source)
+
+
 def _cached_events(raw: list[dict[str, Any]]) -> list[SkiEvent]:
     return [
         SkiEvent(
@@ -143,10 +150,12 @@ def _load_sources(
             status,
         )
         if depths[key]:
-            store.put(
+            _persist_source(
+                store,
                 f"observation:depth:{key}",
                 {"fetched_at": datetime.now(ZoneInfo(config["timezone_run"])).isoformat(),
                  **_record_dataclass(depths[key])},
+                "amedas",
             )
             _snapshot(f"amedas-{key}", depths[key], snapshots_enabled)
         forecast = _fetch(
@@ -165,7 +174,7 @@ def _load_sources(
                 "fetched_at": datetime.now(ZoneInfo(config["timezone_run"])).isoformat(),
                 **_record_dataclass(forecast),
             }
-            store.put(f"observation:forecast:{key}", value)
+            _persist_source(store, f"observation:forecast:{key}", value, "openmeteo_ensemble")
             _snapshot(f"forecast-{key}", forecast, snapshots_enabled)
         else:
             cached = store.get(f"observation:forecast:{key}")
@@ -189,14 +198,14 @@ def _load_sources(
             )
             climatologies[key] = climate
             if climate:
-                store.put(climate_key, _record_dataclass(climate))
+                _persist_source(store, climate_key, _record_dataclass(climate), "openmeteo_archive")
                 _snapshot(f"climatology-{key}", climate, snapshots_enabled)
         statuses[key] = status
 
     global_status: dict[str, str] = {}
     enso_observation = _fetch("enso", enso.fetch_enso, global_status)
     if enso_observation:
-        store.put("observation:enso", _record_dataclass(enso_observation))
+        _persist_source(store, "observation:enso", _record_dataclass(enso_observation), "enso")
         _snapshot("enso", enso_observation, snapshots_enabled)
     fx_observation = _fetch(
         "fx",
@@ -204,7 +213,7 @@ def _load_sources(
         global_status,
     )
     if fx_observation:
-        store.put("observation:fx", _record_dataclass(fx_observation))
+        _persist_source(store, "observation:fx", _record_dataclass(fx_observation), "fx")
         _snapshot("fx", fx_observation, snapshots_enabled)
 
     cached_events = store.get("observation:events")
@@ -214,12 +223,14 @@ def _load_sources(
         global_status,
     )
     if event_list is not None:
-        store.put(
+        _persist_source(
+            store,
             "observation:events",
             {
                 "fetched_at": datetime.now(ZoneInfo(config["timezone_run"])).isoformat(),
                 "events": [_record_dataclass(event) for event in event_list],
             },
+            "niseko_events",
         )
         _snapshot("niseko-events", event_list, snapshots_enabled)
     elif cached_events:
