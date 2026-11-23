@@ -177,3 +177,21 @@ def test_matching_yearless_text_and_time_tag_date_collapse_to_one_date():
     assert len(events) == 1
     assert events[0].start_date == date(2027, 2, 10)
     assert events[0].end_date == date(2027, 2, 10)
+
+
+def test_partial_time_datetime_uses_date_from_visible_text():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>Snow Bar Night</h3>
+          <time datetime="2026-12">December 25, 2026</time>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 4, 15),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2026, 12, 25)
+    assert events[0].end_date == date(2026, 12, 25)

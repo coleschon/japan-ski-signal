@@ -169,6 +169,8 @@ def _event_text_date_parts(block: Tag) -> list[tuple[int, int, int | None]]:
             and (year is None or year == time_date.year)
         ]
         if not matching_time_parts:
+            if not time_dates:
+                parts.extend(time_text_parts)
             continue
         for month, day, year in time_text_parts:
             matching_time_date = next(
