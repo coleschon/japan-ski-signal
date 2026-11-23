@@ -39,8 +39,23 @@ def get_json(
     timeout: int = TIMEOUT_SECONDS,
     client: requests.Session | None = None,
 ) -> dict[str, Any]:
-    response = (client or session()).get(url, params=params, timeout=timeout)
-    response.raise_for_status()
+    try:
+        response = (client or session()).get(url, params=params, timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as error:
+        message = redact_api_key(str(error))
+        try:
+            sanitized = type(error)(
+                message,
+                request=error.request,
+                response=error.response,
+            )
+        except TypeError:
+            try:
+                sanitized = type(error)(message)
+            except TypeError:
+                sanitized = requests.RequestException(message)
+        raise sanitized from None
     result = response.json()
     if not isinstance(result, dict):
         raise ValueError(f"Expected a JSON object from {response.url}")
@@ -53,6 +68,21 @@ def get_text(
     timeout: int = TIMEOUT_SECONDS,
     client: requests.Session | None = None,
 ) -> str:
-    response = (client or session()).get(url, timeout=timeout)
-    response.raise_for_status()
+    try:
+        response = (client or session()).get(url, timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as error:
+        message = redact_api_key(str(error))
+        try:
+            sanitized = type(error)(
+                message,
+                request=error.request,
+                response=error.response,
+            )
+        except TypeError:
+            try:
+                sanitized = type(error)(message)
+            except TypeError:
+                sanitized = requests.RequestException(message)
+        raise sanitized from None
     return response.text

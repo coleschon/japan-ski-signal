@@ -1,13 +1,38 @@
+import traceback
 import json
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+import requests
+
 from ski_signal.sources import amedas, enso
+from ski_signal.sources.common import get_json, get_text
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
 JST = ZoneInfo("Asia/Tokyo")
+
+
+@pytest.mark.parametrize("fetcher", [get_json, get_text])
+def test_source_request_errors_redact_api_keys(fetcher):
+    class Client:
+        def get(self, url, **kwargs):
+            response = requests.Response()
+            response.status_code = 500
+            response.reason = "Internal Server Error"
+            response.url = url
+            return response
+
+    with pytest.raises(requests.HTTPError) as raised:
+        fetcher("https://example.com/data?api_key=SECRET", client=Client())
+
+    formatted = "".join(
+        traceback.format_exception(raised.type, raised.value, raised.tb)
+    )
+    assert "SECRET" not in str(raised.value)
+    assert "SECRET" not in formatted
 
 
 def test_amedas_block_paths_use_three_hour_blocks_and_roll_over():
