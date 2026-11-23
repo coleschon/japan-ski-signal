@@ -1,7 +1,6 @@
 # Japan ski trip signaler - scoring and data config (lead-authored; change deliberately)
 timezone_run: America/Los_Angeles
-email_to: coleperschon38@gmail.com
-email_from: coleperschon38@gmail.com   # SES sandbox: must be a verified identity
+# Email addresses come from EMAIL_TO / EMAIL_FROM env vars (Terraform sets them from infra/terraform.tfvars).
 
 origins: [LAX, SNA, BUR, ONT, SAN]      # comma-joined into one SerpApi departure_id
 party_adults: 3                          # midpoint of 2-4 people

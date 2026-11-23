@@ -2,6 +2,7 @@
 out/
 .terraform/
 infra/backend.hcl
+infra/terraform.tfvars
 *.tfstate*
 *.zip
 .venv/

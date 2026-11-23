@@ -98,3 +98,14 @@ def test_load_config_uses_email_environment_overrides(monkeypatch):
 
     assert config["email_to"] == "recipient@example.com"
     assert config["email_from"] == "sender@example.com"
+
+
+def test_load_config_returns_none_when_email_environment_is_unset(monkeypatch):
+    monkeypatch.delenv("WEIGHTS_PATH", raising=False)
+    monkeypatch.delenv("EMAIL_TO", raising=False)
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    config = load_config()
+
+    assert config["email_to"] is None
+    assert config["email_from"] is None
