@@ -142,6 +142,28 @@ def test_crowd_daily_max_for_niseko_new_year_week():
     assert 1 - sum(levels.values()) / len(days) == pytest.approx(1 / 14)
 
 
+def test_monday_holiday_raises_the_full_weekend_run():
+    config = load_config()
+    days = [date(2026, 1, 10), date(2026, 1, 11), date(2026, 1, 12)]
+
+    levels = crowd_daily_levels("niseko", days, config)
+
+    assert [levels[day] for day in days] == [
+        config["crowds_events"]["japan_holiday_long_weekend_level"]
+    ] * 3
+
+
+def test_friday_holiday_raises_the_full_weekend_run():
+    config = load_config()
+    days = [date(2024, 2, 23), date(2024, 2, 24), date(2024, 2, 25)]
+
+    levels = crowd_daily_levels("niseko", days, config)
+
+    assert [levels[day] for day in days] == [
+        config["crowds_events"]["japan_holiday_long_weekend_level"]
+    ] * 3
+
+
 def test_total_score_hand_computed():
     config = load_config()
     components = {

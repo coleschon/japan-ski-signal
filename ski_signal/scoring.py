@@ -208,13 +208,26 @@ def crowd_daily_levels(
 ) -> dict[date, float]:
     settings = config["crowds_events"]
     japan_holidays = _japan_holidays(trip_days)
+    calendar_start = date(min(day.year for day in trip_days) - 1, 1, 1)
+    calendar_end = date(max(day.year for day in trip_days) + 2, 1, 1)
+    long_weekend_days: set[date] = set()
+    run: list[date] = []
+    current_day = calendar_start
+    while current_day < calendar_end:
+        if current_day.weekday() >= 5 or current_day in japan_holidays:
+            run.append(current_day)
+        else:
+            if any(day in japan_holidays for day in run):
+                long_weekend_days.update(run)
+            run = []
+        current_day += timedelta(days=1)
+    if any(day in japan_holidays for day in run):
+        long_weekend_days.update(run)
+
     result: dict[date, float] = {}
     for day in trip_days:
         levels = [settings["saturday_level"]] if day.weekday() == 5 else []
-        if day in japan_holidays or (
-            day.weekday() >= 5
-            and (day - timedelta(days=1) in japan_holidays or day + timedelta(days=1) in japan_holidays)
-        ):
+        if day in long_weekend_days:
             levels.append(settings["japan_holiday_long_weekend_level"])
         for period in settings["periods"]:
             if date.fromisoformat(str(period["start"])) <= day <= date.fromisoformat(str(period["end"])):
