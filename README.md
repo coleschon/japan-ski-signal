@@ -37,7 +37,7 @@ python -m pytest -q
 
 GitHub Actions runs the same suite for pull requests targeting `main` and pushes to `main`. The suite does not need AWS or SerpApi credentials.
 
-To enforce the check after its first successful run, a repository admin must configure [branch protection](https://github.com/coleschon/japan-ski-signal/settings/branches) for `main`: require a pull request and require the **Unit tests** status check from GitHub Actions, with bypass disabled. GitHub requires Pro to protect branches in a private personal repository.
+To enforce the check after its first successful run, a repository admin can edit the [default branch ruleset](https://github.com/coleschon/japan-ski-signal/rules/27864540), enable **Require status checks to pass**, and add **Unit tests** from GitHub Actions.
 
 ## Deploy
 
