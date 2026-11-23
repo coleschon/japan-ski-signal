@@ -26,6 +26,19 @@ python -m ski_signal.run --dry-run --no-serpapi --force-digest
 
 The report is written under `out/`. Local observations, dedupe state, and usage counts live in `.localdata/`. To enable flight and hotel quote refreshes, set `SERPAPI_API_KEY`; each paid search is checked against the configured monthly cap and SerpApi account usage.
 
+## Tests and CI
+
+With the Python 3.12 virtual environment active, run:
+
+```sh
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+GitHub Actions runs the same suite for pull requests targeting `main` and pushes to `main`. The suite does not need AWS or SerpApi credentials.
+
+To enforce the check after its first successful run, a repository admin can edit the [default branch ruleset](https://github.com/coleschon/japan-ski-signal/rules/27864540), enable **Require status checks to pass**, and add **Unit tests** from GitHub Actions.
+
 ## Deploy
 
 Before initializing Terraform, bootstrap the remote-state bucket once in `us-west-2`. Use your AWS account ID for `<ACCOUNT_ID>` and create `<ACCOUNT_ID>-japan-ski-signal-tfstate` with versioning enabled, all S3 Block Public Access settings enabled, and default server-side encryption (SSE-S3/AES-256). The bucket must exist before Terraform initialization because Terraform cannot create its own backend.
