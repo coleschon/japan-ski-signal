@@ -126,27 +126,63 @@ def _dates_from_time_tag(time_tag: Tag) -> list[date]:
     return dates
 
 
-def _visible_event_date_text(block: Tag) -> str:
-    include_time_text = {}
-    for time_tag in block.select("time[datetime]"):
+def _event_text_date_parts(block: Tag) -> list[tuple[int, int, int | None]]:
+    parts = []
+    outside_time_text = []
+    seen_time_tags = set()
+
+    def flush_outside_time_text():
+        if outside_time_text:
+            parts.extend(_date_parts(" ".join(outside_time_text)))
+            outside_time_text.clear()
+
+    for text in block.find_all(string=True):
+        time_tag = text.find_parent("time", attrs={"datetime": True})
+        if time_tag is None:
+            outside_time_text.append(text.strip())
+            continue
+
+        flush_outside_time_text()
+        if id(time_tag) in seen_time_tags:
+            continue
+        seen_time_tags.add(id(time_tag))
         time_dates = _dates_from_time_tag(time_tag)
-        text_parts = _date_parts(" ".join(time_tag.stripped_strings))
-        include_time_text[id(time_tag)] = any(
-            part_month == time_date.month
-            and part_day == time_date.day
-            and (part_year is None or part_year == time_date.year)
-            for part_month, part_day, part_year in text_parts
+        time_text_parts = _date_parts(" ".join(time_tag.stripped_strings))
+        matching_time_parts = [
+            (month, day, year, time_date)
+            for month, day, year in time_text_parts
             for time_date in time_dates
-        )
-    return " ".join(
-        text.strip()
-        for text in block.find_all(string=True)
-        if text.strip()
-        and (
-            (time_tag := text.find_parent("time", attrs={"datetime": True})) is None
-            or include_time_text.get(id(time_tag), False)
-        )
-    )
+            if month == time_date.month
+            and day == time_date.day
+            and (year is None or year == time_date.year)
+        ]
+        if not matching_time_parts:
+            continue
+        for month, day, year in time_text_parts:
+            matching_time_date = next(
+                (
+                    time_date
+                    for time_date in time_dates
+                    if month == time_date.month
+                    and day == time_date.day
+                    and (year is None or year == time_date.year)
+                ),
+                None,
+            )
+            is_duplicate = matching_time_date is not None and any(
+                previous_month == month
+                and previous_day == day
+                and (
+                    previous_year is None
+                    or previous_year == matching_time_date.year
+                )
+                for previous_month, previous_day, previous_year in parts
+            )
+            if not is_duplicate:
+                parts.append((month, day, year))
+
+    flush_outside_time_text()
+    return parts
 
 
 def _time_tag_dates(block: Tag) -> list[date]:
@@ -215,7 +251,7 @@ def parse_events(
             continue
         time_dates = _time_tag_dates(block)
         text_dates = _assign_text_date_years(
-            _date_parts(_visible_event_date_text(block)),
+            _event_text_date_parts(block),
             time_dates,
             today,
         )
