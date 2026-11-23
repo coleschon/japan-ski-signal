@@ -69,6 +69,11 @@ resource "aws_ses_email_identity" "recipient" {
   email = var.email_to
 }
 
+resource "aws_ses_email_identity" "sender" {
+  count = var.email_from == var.email_to ? 0 : 1
+  email = var.email_from
+}
+
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = local.log_group
   retention_in_days = 14
@@ -109,7 +114,10 @@ resource "aws_iam_role_policy" "lambda" {
       {
         Effect   = "Allow"
         Action   = ["ses:SendEmail"]
-        Resource = aws_ses_email_identity.recipient.arn
+        Resource = concat(
+          [aws_ses_email_identity.recipient.arn],
+          aws_ses_email_identity.sender[*].arn
+        )
       },
       {
         Effect   = "Allow"
