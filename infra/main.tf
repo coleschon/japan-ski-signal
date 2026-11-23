@@ -65,13 +65,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "snapshots" {
   }
 }
 
-resource "aws_ses_email_identity" "recipient" {
-  email = var.email_to
-}
-
-resource "aws_ses_email_identity" "sender" {
-  count = var.email_from == var.email_to ? 0 : 1
-  email = var.email_from
+resource "aws_ses_email_identity" "this" {
+  for_each = toset([var.email_to, var.email_from])
+  email    = each.value
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
@@ -114,10 +110,7 @@ resource "aws_iam_role_policy" "lambda" {
       {
         Effect   = "Allow"
         Action   = ["ses:SendEmail"]
-        Resource = concat(
-          [aws_ses_email_identity.recipient.arn],
-          aws_ses_email_identity.sender[*].arn
-        )
+        Resource = [for identity in aws_ses_email_identity.this : identity.arn]
       },
       {
         Effect   = "Allow"
