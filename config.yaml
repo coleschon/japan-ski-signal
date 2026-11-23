@@ -1,0 +1,95 @@
+# Japan ski trip signaler - scoring and data config (lead-authored; change deliberately)
+timezone_run: America/Los_Angeles
+email_to: coleperschon38@gmail.com
+email_from: coleperschon38@gmail.com   # SES sandbox: must be a verified identity
+
+origins: [LAX, SNA, BUR, ONT, SAN]      # comma-joined into one SerpApi departure_id
+party_adults: 3                          # midpoint of 2-4 people
+
+trip:
+  candidate_weekday: Fri                 # outbound departure day from SoCal
+  window_min_days: 7                     # earliest candidate departure (days from today)
+  window_max_days: 56                    # latest candidate departure (8 weeks)
+  return_offset_days: 7                  # return flight departs Japan D+7
+  hotel_checkin_offset_days: 1           # arrive Japan D+1 (date line)
+  hotel_nights: 6
+
+flight_groups:
+  hokkaido: {arrival_id: CTS}
+  honshu:   {arrival_id: "HND,NRT"}
+
+resorts:
+  niseko:  {name: Niseko,       lat: 42.86, lon: 140.70, elevation_m: 800,  amedas: "16217", amedas_name: Kutchan,      flight_group: hokkaido, region: hokkaido, hotel_query: "Niseko Hirafu",        events: true}
+  hakuba:  {name: Hakuba Valley, lat: 36.70, lon: 137.83, elevation_m: 1200, amedas: "48141", amedas_name: Hakuba,       flight_group: honshu,   region: honshu,   hotel_query: "Hakuba Nagano",        events: false}
+  nozawa:  {name: Nozawa Onsen, lat: 36.92, lon: 138.45, elevation_m: 1000, amedas: "48031", amedas_name: Nozawa Onsen, flight_group: honshu,   region: honshu,   hotel_query: "Nozawa Onsen",         events: false}
+  myoko:   {name: Myoko Kogen,  lat: 36.89, lon: 138.18, elevation_m: 1000, amedas: "54816", amedas_name: Sekiyama,     flight_group: honshu,   region: honshu,   hotel_query: "Myoko Kogen Akakura",  events: false}
+
+weights:          # must sum to 1.0
+  snow: 0.45
+  crowds_events: 0.20
+  flights: 0.20
+  lodging: 0.10
+  yen: 0.05
+
+snow:
+  base_gate_cm: 30            # AMeDAS depth below this gates in-horizon combos only (total score 0, no alerts)
+  base_full_cm: 150           # base_score = clamp((depth - gate) / (full - gate), 0, 1)
+  forecast_horizon_days: 15   # ECMWF IFS 0.25 ensemble (Open-Meteo ensemble API)
+  forecast_full_cm: 100       # forecast_score = clamp(median_sum_cm / full, 0, 1); sum over trip days D+1..D+7 plus the 3 days before D+1
+  in_horizon_mix: {base: 0.4, forecast: 0.6}
+  beyond_horizon_mix: {base: 0.4, climatology: 0.6}
+  climatology_years: 20       # Open-Meteo historical archive (ERA5) daily snowfall_sum
+  # climatology_score = mean snowfall over the same trip days across years / resort's max 7-day-window mean in Dec-Mar
+  enso_factor:                # multiply climatology_score by factor; ONI/RONI latest 3-month anomaly (NOAA CPC)
+    strong_el_nino:   {min_anom: 1.5,  hokkaido: 0.95, honshu: 0.85}
+    moderate_el_nino: {min_anom: 0.5,  hokkaido: 0.97, honshu: 0.90}
+    neutral:          {hokkaido: 1.0,  honshu: 1.0}
+    la_nina:          {max_anom: -0.5, hokkaido: 1.05, honshu: 1.05}   # final score capped at 1.0
+
+crowds_events:
+  niseko_mix: {crowd: 0.5, events: 0.5}   # other resorts: crowd only
+  events_full_count: 5                    # events_score = min(1, distinct nightlife events overlapping D+1..D+7 / 5)
+  nightlife_keywords: [DJ, apres, après, party, live, music, fireworks, bar, festival, countdown, torch, night]
+  # crowd level per day = max of matching rules; crowd_score = 1 - mean(level over D+1..D+7)
+  periods:
+    - {name: New Year holidays,          start: 2026-12-29, end: 2027-01-03, level: {all: 1.0}}
+    - {name: Christmas,                  start: 2026-12-24, end: 2026-12-28, level: {all: 0.6, niseko: 0.8}}
+    - {name: Australian school holidays, start: 2026-12-19, end: 2027-01-26, level: {niseko: 0.5, hakuba: 0.4, nozawa: 0.2, myoko: 0.1}}
+    - {name: Lunar New Year,             start: 2027-02-05, end: 2027-02-14, level: {niseko: 0.9, hakuba: 0.6, nozawa: 0.5, myoko: 0.3}}
+  japan_holiday_long_weekend_level: 0.5   # from python `holidays` (JP): holiday or weekend adjacent to a holiday
+  saturday_level: 0.3
+
+flights:
+  # if typical_price_range [lo, hi] present: score = 1 if price <= lo, 0 if >= hi, else (hi - price)/(hi - lo)
+  level_fallback: {low: 1.0, typical: 0.6, high: 0.2}
+  unknown_score: 0.5
+
+lodging:
+  # score = 1 - percentile_rank(lowest total price, all observations for that resort this season); lower price = better
+  min_observations: 5
+  unknown_score: 0.5
+
+yen:
+  # score = clamp((usd_jpy - p10) / (p90 - p10), 0, 1) over trailing 365 days (Frankfurter)
+  lookback_days: 365
+
+serpapi:
+  monthly_cap: 240            # hard cap tracked in storage AND checked against SerpApi account.json (free) before spending
+  daily_flight_searches: 4    # refresh stalest (group, departure) combos first
+  daily_hotel_searches: 3     # refresh stalest (resort, checkin) combos first
+  alert_refresh_searches: 2   # extra flight+hotel refresh for a storm-alert window
+
+alerts:
+  storm:
+    lead_days_min: 7
+    lead_days_max: 15
+    window_hours: 72
+    median_cm: 50             # ensemble median 72h snowfall
+    member_frac_cm: 30        # and >= member_frac of members show >= 30 cm in that window
+    member_frac: 0.6
+    min_base_cm: 50
+    dedupe_days: 3            # skip re-alert for same resort+window unless median grew >= 25%
+    dedupe_growth: 0.25
+  book_now_score: 0.75        # once per (resort, departure)
+  weekly_digest_weekday: Mon
+  run_hour_local: 6

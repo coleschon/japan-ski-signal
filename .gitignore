@@ -1,0 +1,11 @@
+.localdata/
+out/
+.terraform/
+infra/backend.hcl
+*.tfstate*
+*.zip
+.venv/
+build/
+__pycache__/
+.pytest_cache/
+*.py[cod]
