@@ -36,6 +36,7 @@ from ski_signal.scoring import (
     yen_score,
 )
 from ski_signal.sources import amedas, enso, fx, niseko_events, openmeteo
+from ski_signal.sources.common import redact_api_key
 from ski_signal.sources.serpapi_flights import fetch_flights
 from ski_signal.sources.serpapi_hotels import fetch_hotels
 from ski_signal.storage import LocalStore, S3SnapshotWriter, Store, configured_store
@@ -355,8 +356,13 @@ def _refresh_serpapi(
             }
             store.put(key, record)
             flight_records[(group, departure)] = record
-        except Exception:
-            LOGGER.exception("Flight quote failed for %s on %s", group, departure)
+        except Exception as error:
+            LOGGER.error(
+                "Flight quote or budget check failed for %s on %s: %s",
+                group,
+                departure,
+                redact_api_key(str(error)),
+            )
             status["serpapi_flights"] = "stale/unavailable"
     for resort_key, checkin, key in hotel_candidates:
         if key not in selected_hotels:
@@ -377,8 +383,13 @@ def _refresh_serpapi(
             }
             store.put(key, record)
             hotel_records[(resort_key, checkin)] = record
-        except Exception:
-            LOGGER.exception("Hotel quote failed for %s on %s", resort_key, checkin)
+        except Exception as error:
+            LOGGER.error(
+                "Hotel quote or budget check failed for %s on %s: %s",
+                resort_key,
+                checkin,
+                redact_api_key(str(error)),
+            )
             status["serpapi_hotels"] = "stale/unavailable"
     if not status:
         status["serpapi"] = "fresh"

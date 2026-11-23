@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import requests
@@ -6,6 +7,11 @@ from urllib3.util.retry import Retry
 
 
 TIMEOUT_SECONDS = 20
+API_KEY_PATTERN = re.compile(r"(?i)(api_key=)[^&\s\"']+")
+
+
+def redact_api_key(message: str) -> str:
+    return API_KEY_PATTERN.sub(r"\1[REDACTED]", message)
 
 
 def session() -> requests.Session:

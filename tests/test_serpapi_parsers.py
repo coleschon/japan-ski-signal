@@ -1,5 +1,6 @@
 from ski_signal.config import load_config
 from ski_signal.scoring import flight_score
+from ski_signal.sources.common import redact_api_key
 from ski_signal.sources.serpapi_flights import parse_flights
 from ski_signal.sources.serpapi_hotels import parse_hotels
 
@@ -19,6 +20,15 @@ def test_flight_search_parses_minimum_and_insights():
     assert result.price_range == (800, 1000)
     assert result.google_flights_url == "https://flights.example"
     assert flight_score(result.price, result.price_range, result.price_level, load_config()) == 0.5
+
+
+def test_serpapi_api_key_is_redacted_from_error_messages():
+    message = "GET https://serpapi.com/search.json?engine=google&api_key=secret-token failed"
+
+    redacted = redact_api_key(message)
+
+    assert "secret-token" not in redacted
+    assert "api_key=[REDACTED]" in redacted
 
 
 def test_hotel_parser_sorts_top_three():
