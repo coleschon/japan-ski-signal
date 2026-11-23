@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest.mock import Mock
 
 from ski_signal.models import DepthObservation
+from ski_signal.runner import _persist_source
 from ski_signal.storage import DynamoStore
 
 
@@ -34,7 +35,6 @@ def test_dynamo_store_converts_nested_floats_and_decimals():
         ("observation:depth:niseko", value)
     ]
 
-
 def test_dynamo_store_serializes_dataclass_observations_as_field_dicts():
     store = DynamoStore.__new__(DynamoStore)
     store.table = Mock()
@@ -59,3 +59,13 @@ def test_dynamo_store_serializes_dataclass_observations_as_field_dicts():
     assert isinstance(restored, dict)
     assert isinstance(restored["depth_cm"], float)
     assert restored["depth_cm"] == 21.5
+
+
+def test_source_persistence_failure_does_not_raise(caplog):
+    class FailingStore:
+        def put(self, key, value):
+            raise OSError("storage unavailable")
+
+    _persist_source(FailingStore(), "observation:depth:niseko", {"depth_cm": 21.5}, "amedas")
+
+    assert "Could not persist amedas source data" in caplog.text
