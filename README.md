@@ -53,7 +53,9 @@ Copy the backend example, replace `<ACCOUNT_ID>` with your account ID, then init
 
 ```sh
 cp infra/backend.hcl.example infra/backend.hcl
+cp infra/terraform.tfvars.example infra/terraform.tfvars
 # Replace <ACCOUNT_ID> in infra/backend.hcl with your AWS account ID.
+# Edit infra/terraform.tfvars with your verified SES email identities.
 export SERPAPI_API_KEY='your-serpapi-key'
 cd infra
 terraform init -backend-config=backend.hcl
@@ -65,4 +67,4 @@ TF_VAR_serpapi_api_key="$SERPAPI_API_KEY" terraform apply
 
 Terraform provisions the Lambda, least-privilege runtime and scheduler roles, on-demand DynamoDB table, S3 snapshot bucket with 90-day expiration, daily 06:00 America/Los_Angeles schedule, CloudWatch log group with 14-day retention, and an SES email identity for the configured recipient. After apply, click the verification link SES sends to `email_to`; SES sandbox accounts also require the recipient to be verified before email delivery.
 
-The SES identity is created for the recipient address. Set `TF_VAR_email_to` and `TF_VAR_email_from` to verified SES identities if changing the defaults.
+Set the email addresses in `infra/terraform.tfvars`; both must be verified SES identities.

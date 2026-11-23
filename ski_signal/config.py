@@ -63,7 +63,5 @@ def load_config(
     config["weights"] = _load_weights(selected_weights_path)
     validate_config(config)
     for name in ("email_to", "email_from"):
-        value = os.environ.get(name.upper())
-        if value is not None:
-            config[name] = value
+        config[name] = os.environ.get(name.upper())
     return config

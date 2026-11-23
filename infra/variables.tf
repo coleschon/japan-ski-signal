@@ -7,13 +7,11 @@ variable "region" {
 variable "email_to" {
   description = "Verified SES recipient identity."
   type        = string
-  default     = "coleperschon38@gmail.com"
 }
 
 variable "email_from" {
   description = "Verified SES sender identity."
   type        = string
-  default     = "coleperschon38@gmail.com"
 }
 
 variable "serpapi_api_key" {

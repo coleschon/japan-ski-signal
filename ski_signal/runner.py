@@ -440,6 +440,8 @@ def run_signal(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     config = config or load_config()
+    if not dry_run and (not config.get("email_to") or not config.get("email_from")):
+        raise ValueError("EMAIL_TO and EMAIL_FROM must be set to send email")
     store = store or (
         LocalStore(os.environ.get("LOCAL_DATA_DIR", ".localdata"))
         if dry_run

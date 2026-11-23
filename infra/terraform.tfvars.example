@@ -1,0 +1,3 @@
+# Both addresses must be verified SES identities.
+email_to   = "you@example.com"
+email_from = "you@example.com"
