@@ -1,0 +1,8 @@
+# Edit these numbers; any non-negative values are auto-normalized to percentages.
+# Set a factor to 0 to disable it.
+# Redeploy to apply weight changes.
+snow: 45
+crowds_events: 20
+flights: 20
+lodging: 10
+yen: 5

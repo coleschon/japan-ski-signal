@@ -24,13 +24,6 @@ resorts:
   nozawa:  {name: Nozawa Onsen, lat: 36.92, lon: 138.45, elevation_m: 1000, amedas: "48031", amedas_name: Nozawa Onsen, flight_group: honshu,   region: honshu,   hotel_query: "Nozawa Onsen",         events: false}
   myoko:   {name: Myoko Kogen,  lat: 36.89, lon: 138.18, elevation_m: 1000, amedas: "54816", amedas_name: Sekiyama,     flight_group: honshu,   region: honshu,   hotel_query: "Myoko Kogen Akakura",  events: false}
 
-weights:          # must sum to 1.0
-  snow: 0.45
-  crowds_events: 0.20
-  flights: 0.20
-  lodging: 0.10
-  yen: 0.05
-
 snow:
   base_gate_cm: 30            # AMeDAS depth below this gates in-horizon combos only (total score 0, no alerts)
   base_full_cm: 150           # base_score = clamp((depth - gate) / (full - gate), 0, 1)
