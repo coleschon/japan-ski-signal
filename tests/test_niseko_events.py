@@ -106,6 +106,25 @@ def test_yearless_range_uses_time_tag_year_and_wraps_forward():
     assert events[0].end_date == date(2027, 1, 1)
 
 
+def test_matching_time_tag_anchors_yearless_range_backwards():
+    events = parse_events(
+        """
+        <li class="event">
+          <h3>New Year Bar Night</h3>
+          <div class="event-description">December 31 – January 1</div>
+          <time datetime="2027-01-01">January 1</time>
+        </li>
+        """,
+        source_url="https://example.com/events/",
+        keywords=["bar"],
+        today=date(2026, 4, 15),
+    )
+
+    assert len(events) == 1
+    assert events[0].start_date == date(2026, 12, 31)
+    assert events[0].end_date == date(2027, 1, 1)
+
+
 def test_yearless_date_before_explicit_year_uses_the_explicit_year():
     events = parse_events(
         """

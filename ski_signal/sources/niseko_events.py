@@ -71,14 +71,27 @@ def _assign_text_date_years(
     if not parts:
         return []
 
-    explicit_indices = [
-        index for index, (_, _, year) in enumerate(parts) if year is not None
-    ]
+    explicit_dates = {}
+    for index, (month, day, year) in enumerate(parts):
+        if year is not None:
+            explicit_dates[index] = date(year, month, day)
+            continue
+        matching_time_date = next(
+            (
+                time_date
+                for time_date in time_dates
+                if (time_date.month, time_date.day) == (month, day)
+            ),
+            None,
+        )
+        if matching_time_date is not None:
+            explicit_dates[index] = matching_time_date
+
+    explicit_indices = sorted(explicit_dates)
     assigned: list[date | None] = [None] * len(parts)
     if explicit_indices:
         anchor = explicit_indices[0]
-        month, day, year = parts[anchor]
-        assigned[anchor] = date(year, month, day)
+        assigned[anchor] = explicit_dates[anchor]
         for index in range(anchor - 1, -1, -1):
             month, day, _ = parts[index]
             next_date = assigned[index + 1]
@@ -88,20 +101,19 @@ def _assign_text_date_years(
             assigned[index] = candidate
         previous = assigned[anchor]
         for index in range(anchor + 1, len(parts)):
-            month, day, year = parts[index]
-            if year is None:
+            month, day, _ = parts[index]
+            if index in explicit_dates:
+                candidate = explicit_dates[index]
+            else:
                 candidate = _date_in_year(month, day, previous.year, 1)
                 if candidate < previous:
                     candidate = _date_in_year(month, day, previous.year + 1, 1)
-            else:
-                candidate = date(year, month, day)
             assigned[index] = candidate
             previous = candidate
     else:
         month, day, _ = parts[0]
-        anchor_year = min(time_dates).year if time_dates else today.year
-        first = _date_in_year(month, day, anchor_year, 1)
-        if not time_dates and first < today - timedelta(days=60):
+        first = _date_in_year(month, day, today.year, 1)
+        if first < today - timedelta(days=60):
             first = _date_in_year(month, day, first.year + 1, 1)
         assigned[0] = first
         previous = first
